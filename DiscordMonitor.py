@@ -81,6 +81,63 @@ class DiscordMonitor(discord.Client):
                     return True
         return False
 
+    async def process_csgo_message(self, message: discord.Message):
+        try:
+            status = "csgo bot推送"
+            attachment_urls = list()
+            image_cqcodes = list()
+            for attachment in message.attachments:
+                attachment_urls.append(attachment.url)
+                if attachment.content_type in img_MIME:
+                    # 尝试利用discord.py加载图片为base64，使用代理情况下会无法连接
+                    #image = await attachment.read(use_cached=False)
+                    #image_base64 = base64.b64encode(image).decode("utf8")
+                    #image_cqcodes.append(f"[CQ:image,file=base64://{image_base64}==,timeout=5]")
+                    image_cqcodes.append(f"[CQ:image,file={attachment.url},timeout=5]")
+            for embed in message.embeds:
+                if embed.image.proxy_url:
+                    image_cqcodes.append(f"[CQ:image,file={embed.image.proxy_url},timeout=5]")
+                    attachment_urls.append(embed.image.proxy_url)
+            attachment_str = ' ; '.join(attachment_urls)
+            content = self.push_text_processor.sub("掉落推送")
+            toast_title = '%s %s' % (self.message_user[str(message.author.id)], status)
+            toast_text = content if len(message.attachments) == 0 else content + "[附件]"
+            notification.notify(toast_title, toast_text, app_icon='icon.ico', app_name='Discord Monitor')
+            if len(attachment_str) > 0:
+                attachment_log = '. Attachment: ' + attachment_str
+            else:
+                attachment_log = ''
+            image_str = "".join(image_cqcodes)
+            t = message.created_at.replace(tzinfo=datetime.timezone.utc).astimezone(timezone).strftime(
+                '%Y/%m/%d %H:%M:%S')
+            log_text = '%s: ID: %d. Username: %s. Server: %s. Channel: %s. Content: %s%s' % \
+                       (status, message.author.id,
+                        message.author.name + '#' + message.author.discriminator,
+                        message.guild.name, message.channel.name, message.content, attachment_log)
+            add_log(0, 'Discord', log_text)
+            keywords = {"type": status,
+                        "user_id": str(message.author.id),
+                        "user_name": message.author.name,
+                        "user_discriminator": message.author.discriminator,
+                        "channel_id:": str(message.channel.id),
+                        "channel_name": message.channel.name,
+                        "server_id": str(message.guild.id),
+                        "server_name": message.guild.name,
+                        "content": self.push_text_processor.escape_cqcode(content),
+                        "content_cat": "",
+                        "attachment": attachment_str,
+                        "image": image_str,
+                        "time": t,
+                        "timezone": timezone.zone}
+            if len(self.message_user) != 0:
+                keywords["user_display_name"] = self.message_user[str(message.author.id)]
+            else:
+                keywords["user_display_name"] = message.author.name + '#' + message.author.discriminator
+            push_text = self.push_text_processor.push_text_process(keywords, is_user_dynamic=False)
+            asyncio.create_task(self.qq_push.push_message(push_text, 1))
+        except Exception as e:
+            add_log(2, 'Discord', 'Error in process_csgo_message: ' + str(e))
+
     async def process_message(self, message: discord.Message, status):
         """
         处理消息动态，并生成推送消息文本及log
@@ -269,6 +326,8 @@ class DiscordMonitor(discord.Client):
         """
         if not self.message_monitoring:
             return
+        if str(message.author.id) in self.message_user:  # csgo bot的content为空，需特判排除
+            await self.process_csgo_message(message)
         # 消息标注事件亦会被捕获，同时其content及attachments为空，需特判排除
         if self.is_monitored_object(message.author, message.channel, message.guild) and (message.content != '' or len(message.attachments) > 0):
             await self.process_message(message, '发送消息')
