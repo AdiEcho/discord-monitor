@@ -89,17 +89,15 @@ class DiscordMonitor(discord.Client):
             for attachment in message.attachments:
                 attachment_urls.append(attachment.url)
                 if attachment.content_type in img_MIME:
-                    # 尝试利用discord.py加载图片为base64，使用代理情况下会无法连接
-                    #image = await attachment.read(use_cached=False)
-                    #image_base64 = base64.b64encode(image).decode("utf8")
-                    #image_cqcodes.append(f"[CQ:image,file=base64://{image_base64}==,timeout=5]")
                     image_cqcodes.append(f"[CQ:image,file={attachment.url},timeout=5]")
+            content = ""
             for embed in message.embeds:
-                if embed.image.proxy_url:
-                    image_cqcodes.append(f"[CQ:image,file={embed.image.proxy_url},timeout=5]")
-                    attachment_urls.append(embed.image.proxy_url)
+                content += embed.title.replace("*", "") + "\n"
+                content += embed.description.replace("*", "").split("\n")[0]
+                box_img = embed.thumbnail.url
+                image_cqcodes.append(f"[CQ:image,file={box_img},timeout=5]")
             attachment_str = ' ; '.join(attachment_urls)
-            content = self.push_text_processor.sub("掉落推送")
+            content = self.push_text_processor.sub(content)
             toast_title = '%s %s' % (self.message_user[str(message.author.id)], status)
             toast_text = content if len(message.attachments) == 0 else content + "[附件]"
             notification.notify(toast_title, toast_text, app_icon='icon.ico', app_name='Discord Monitor')
@@ -136,7 +134,7 @@ class DiscordMonitor(discord.Client):
             push_text = self.push_text_processor.push_text_process(keywords, is_user_dynamic=False)
             asyncio.create_task(self.qq_push.push_message(push_text, 1))
         except Exception as e:
-            add_log(2, 'Discord', 'Error in process_csgo_message: ' + str(e))
+            add_log(2, 'Discord', 'Error in process_csgo_message: ' + traceback.format_exc())
 
     async def process_message(self, message: discord.Message, status):
         """
