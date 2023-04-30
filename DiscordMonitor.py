@@ -98,9 +98,6 @@ class DiscordMonitor(discord.Client):
                 image_cqcodes.append(f"[CQ:image,file={box_img},timeout=5]")
             attachment_str = ' ; '.join(attachment_urls)
             content = self.push_text_processor.sub(content)
-            toast_title = '%s %s' % (self.message_user[str(message.author.id)], status)
-            toast_text = content if len(message.attachments) == 0 else content + "[附件]"
-            notification.notify(toast_title, toast_text, app_icon='icon.ico', app_name='Discord Monitor')
             if len(attachment_str) > 0:
                 attachment_log = '. Attachment: ' + attachment_str
             else:
